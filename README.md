@@ -3,6 +3,8 @@
 **Live visual customisation for Crash Team Racing Nitro-Fueled (PS4 build running in the SacredFire / shadPS4-based PC host).**
 Change your nitro flame, the Champion kart underglow and your kart's paint from an in-game menu (**F8**), with instant results, in the spirit of BakkesMod for Rocket League.
 
+**By ابو عرب | ABU 3RB** · TikTok [@_tmo](https://www.tiktok.com/@_tmo) · Instagram [@7.u8](https://www.instagram.com/7.u8) · Discord `7_ug`
+
 > Unofficial fan project. Not affiliated with Activision, Beenox or Toys for Bob. No game files are included or modified.
 
 [العربية في الأسفل](#العربية)
@@ -87,6 +89,16 @@ and `ptrscan` (a pointer scanner for the running game).
 * A colour does not change: open the Diagnostics tab; the log says what was found.
 * Report problems with the log file attached.
 
+## Credits
+
+Created by **ابو عرب | ABU 3RB**
+
+* TikTok: [@_tmo](https://www.tiktok.com/@_tmo)
+* Instagram: [@7.u8](https://www.instagram.com/7.u8)
+* Discord: `7_ug`
+
+If you share or fork ASTRO CTR, please keep these credits.
+
 ## License
 
 MIT, see [LICENSE](LICENSE). Dear ImGui is MIT licensed (`third_party/imgui/LICENSE.txt`).
@@ -94,6 +106,8 @@ MIT, see [LICENSE](LICENSE). Dear ImGui is MIT licensed (`third_party/imgui/LICE
 ---
 
 ## العربية
+
+**من صنع: ابو عرب | ABU 3RB** · تيك توك `_tmo` · انستقرام `7.u8` · ديسكورد `7_ug`
 
 **ASTRO CTR** مود يغيّر ألوان Crash Team Racing Nitro-Fueled **مباشرة** من قائمة داخل اللعبة (زر **F8**)، على فكرة BakkesMod في Rocket League.
 

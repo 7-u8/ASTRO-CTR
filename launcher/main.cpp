@@ -96,7 +96,7 @@ BOOL WINAPI OnConsoleClose(DWORD) {   // close button, Ctrl+C, logoff, shutdown
 }  // namespace
 
 int wmain() {
-    Say(L"ASTRO CTR " ASTRO_VERSION_W);
+    Say(L"ASTRO CTR " ASTRO_VERSION_W L"  -  by ABU 3RB  (TikTok _tmo | Instagram 7.u8 | Discord 7_ug)");
     const fs::path dir = ExeDir();
     g_manifest = (dir / L"VkLayer_ASTRO_ctr_implicit.json").wstring();
     if (!fs::exists(dir / L"astro_ctr.dll") || !fs::exists(g_manifest)) {

@@ -387,6 +387,9 @@ void SettingsTab() {
     if (ImGui::Button("Reload from file")) { g.ctl->Shutdown(); g.loaded = false; EnsureLoaded(); g.dirty = false; }
     if (!g.save_msg.empty()) ImGui::TextUnformatted(g.save_msg.c_str());
     ImGui::TextDisabled("%s", DefaultConfigPath().string().c_str());
+    ImGui::SeparatorText("Credits");
+    ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.15f, 1), "ASTRO CTR " ASTRO_VERSION " by ABU 3RB");
+    ImGui::TextUnformatted("TikTok: _tmo   |   Instagram: 7.u8   |   Discord: 7_ug");
 }
 
 void DiagTab(const OverlayDiag& d) {
@@ -438,7 +441,7 @@ void Menu_DrawToast() {
                                                 ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing);
     ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.15f, 1), "ASTRO CTR");
     ImGui::SameLine();
-    ImGui::TextUnformatted("loaded - press F8 for the menu");
+    ImGui::TextUnformatted("by ABU 3RB - press F8 for the menu");
     ImGui::End();
 }
 
