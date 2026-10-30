@@ -1,0 +1,10 @@
+build/
+build*/
+dist/
+*.exe
+*.dll
+*.obj
+*.o
+*.zip
+.vscode/
+.idea/

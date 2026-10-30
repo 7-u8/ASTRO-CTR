@@ -1,0 +1,17 @@
+{
+    "file_format_version": "1.2.0",
+    "layer": {
+        "name": "VK_LAYER_ASTRO_ctr",
+        "type": "GLOBAL",
+        "library_path": ".\\astro_ctr.dll",
+        "api_version": "1.4.0",
+        "implementation_version": "1",
+        "description": "ASTRO CTR in-game menu (live visual customisation)",
+        "functions": {
+            "vkNegotiateLoaderLayerInterfaceVersion": "astro_NegotiateLoaderLayerInterfaceVersion"
+        },
+        "disable_environment": {
+            "ASTRO_CTR_DISABLE": "1"
+        }
+    }
+}
