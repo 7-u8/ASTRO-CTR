@@ -438,44 +438,35 @@ BOOL WINAPI OnConsole(DWORD ev) {
     return FALSE;
 }
 
-// the art needs the whole screen: Windows Terminal -> its fullscreen (F11, only when not already fullscreen);
-// the classic console -> fullscreen display mode, else maximized
-void GoFullscreen(HANDLE out) {
+// The screen always runs in the classic console window: a normal window (frame, title bar, buttons) that opens maximized.
+// Started in another terminal (Windows Terminal), it opens itself again in the classic console and that copy carries on.
+bool InClassicConsole() {
     HWND con = GetConsoleWindow();
     wchar_t cls[128] = {};
-    if (con) GetClassNameW(con, cls, 128);
-    if (!wcscmp(cls, L"ConsoleWindowClass")) {
-        COORD size;
-        if (!SetConsoleDisplayMode(out, CONSOLE_FULLSCREEN_MODE, &size)) ShowWindow(con, SW_MAXIMIZE);
-        return;
-    }
-    // Windows Terminal: its window carries the title of the active tab, ours ("ASTRO CTR V2")
-    HWND wt = nullptr;
-    for (int tries = 0; !wt && tries < 20; ++tries, Sleep(50))
-        EnumWindows([](HWND h, LPARAM lp) -> BOOL {
-            wchar_t c[128] = {}, t[256] = {};
-            GetClassNameW(h, c, 128);
-            GetWindowTextW(h, t, 256);
-            if (!wcscmp(c, L"CASCADIA_HOSTING_WINDOW_CLASS") && wcsstr(t, L"ASTRO CTR V2")) { *reinterpret_cast<HWND*>(lp) = h; return FALSE; }
-            return TRUE;
-        }, reinterpret_cast<LPARAM>(&wt));
-    if (!wt) return;
-    MONITORINFO mi{};
-    mi.cbSize = sizeof mi;
-    RECT r{};
-    GetWindowRect(wt, &r);
-    if (GetMonitorInfoW(MonitorFromWindow(wt, MONITOR_DEFAULTTONEAREST), &mi) && r.left <= mi.rcMonitor.left && r.top <= mi.rcMonitor.top &&
-        r.right >= mi.rcMonitor.right && r.bottom >= mi.rcMonitor.bottom && !(GetWindowLongW(wt, GWL_STYLE) & WS_CAPTION))
-        return;   // already fullscreen: F11 would turn it off
-    ShowWindow(wt, SW_MAXIMIZE);   // always works; fullscreen below needs the key
-    SetForegroundWindow(wt);
-    Sleep(100);
-    if (GetForegroundWindow() != wt) return;   // the key would go to another window: stay maximized
-    INPUT in[2] = {};
-    in[0].type = in[1].type = INPUT_KEYBOARD;
-    in[0].ki.wVk = in[1].ki.wVk = VK_F11;
-    in[1].ki.dwFlags = KEYEVENTF_KEYUP;
-    SendInput(2, in, sizeof(INPUT));
+    return con && GetClassNameW(con, cls, 128) && !wcscmp(cls, L"ConsoleWindowClass");
+}
+bool ReopenInClassicConsole() {
+    if (InClassicConsole() || GetEnvironmentVariableW(L"ASTRO_V2_CHILD", nullptr, 0)) return false;   // already there, or tried once
+    wchar_t sys[MAX_PATH];
+    GetSystemDirectoryW(sys, MAX_PATH);
+    std::wstring cmd = L"\"" + (fs::path(sys) / L"conhost.exe").wstring() + L"\" " + GetCommandLineW();
+    SetEnvironmentVariableW(L"ASTRO_V2_CHILD", L"1");
+    STARTUPINFOW si{};
+    si.cb = sizeof si;
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) return false;
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return true;
+}
+void Maximize(HANDLE out) {
+    HWND con = GetConsoleWindow();
+    if (!con) return;
+    const COORD big = GetLargestConsoleWindowSize(out);   // the buffer must be as wide as the maximized window
+    CONSOLE_SCREEN_BUFFER_INFO bi{};
+    if (GetConsoleScreenBufferInfo(out, &bi) && big.X > 0)
+        SetConsoleScreenBufferSize(out, COORD{std::max(big.X, bi.dwSize.X), std::max(big.Y, bi.dwSize.Y)});
+    ShowWindow(con, SW_MAXIMIZE);
 }
 
 void Message(const wchar_t* text) {
@@ -487,6 +478,7 @@ void Message(const wchar_t* text) {
 
 int wmain(int argc, wchar_t** argv) {
     SetConsoleTitleW(L"ASTRO CTR V2");
+    if (ReopenInClassicConsole()) return 0;
     // --preview: the screen only (no registration, no single-instance check), for screenshots and testing
     const bool preview = argc > 1 && !wcscmp(argv[1], L"--preview");
     g_preview = preview;
@@ -517,7 +509,7 @@ int wmain(int argc, wchar_t** argv) {
     GetConsoleMode(out, &mode);
     SetConsoleMode(out, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_PROCESSED_OUTPUT);
     SetConsoleOutputCP(CP_UTF8);
-    GoFullscreen(out);
+    Maximize(out);
     Sleep(150);   // the terminal settles on its new size before the first frame
     // the classic console: make the window as large as the screen allows, so the art shows at full size
     CONSOLE_SCREEN_BUFFER_INFO bi{};

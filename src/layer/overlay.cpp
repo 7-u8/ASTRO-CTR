@@ -15,7 +15,6 @@
 #include "../diagnostics/log.h"
 #include "menu.h"
 #include "gamepad_view.h"
-#include "players_esp.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
@@ -355,11 +354,10 @@ VkSemaphore Overlay_OnPresent(DeviceFns* d, VkQueue queue, uint32_t family, HWND
     const bool toast = Now() < g_toast_until;
     Menu_Tick();   // rainbow colours keep moving while the menu is closed
     const bool pad_view = GamepadView_Enabled();   // MISC page: the pad on the screen
-    const bool esp = PlayersEsp_Enabled();         // PLAYERS page: karts marked on the screen
     static bool was_open = false;
     if (was_open && !g_menu_open) AstroUi_Flush();   // closed: save what the pages still had pending
     was_open = g_menu_open;
-    if (!g_menu_open && !toast && !pad_view && !esp && g_ready_signalled) return VK_NULL_HANDLE;   // nothing to draw: zero cost
+    if (!g_menu_open && !toast && !pad_view && g_ready_signalled) return VK_NULL_HANDLE;   // nothing to draw: zero cost
 
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplWin32_NewFrame();
@@ -369,7 +367,6 @@ VkSemaphore Overlay_OnPresent(DeviceFns* d, VkQueue queue, uint32_t family, HWND
     io.MouseDrawCursor = g_menu_open;
     ImGui::NewFrame();
     g_diag.frames++;
-    if (esp) PlayersEsp_Draw();
     if (pad_view) GamepadView_Draw();
     if (toast && !g_menu_open) Menu_DrawToast();
     if (g_menu_open) Menu_Draw(&g_menu_open, g_diag);

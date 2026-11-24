@@ -44,7 +44,7 @@ target_include_directories(astro_core PUBLIC src)
 # ---- in-game module: Vulkan layer VK_LAYER_ASTRO_ctr with the ImGui menu ----
 set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/third_party/imgui)
 add_library(astro_ctr SHARED
-  src/layer/layer.cpp src/layer/overlay.cpp src/layer/menu.cpp src/layer/nitro_backend.cpp src/layer/fx_editor.cpp src/layer/wheel_editor.cpp src/layer/mod_engine.cpp src/layer/map_colors.cpp src/layer/gamepad_view.cpp src/layer/mesh_colors.cpp src/layer/switches.cpp src/layer/zone_light.cpp src/layer/perf.cpp src/layer/render_hooks.cpp src/layer/players_esp.cpp
+  src/layer/layer.cpp src/layer/overlay.cpp src/layer/menu.cpp src/layer/nitro_backend.cpp src/layer/fx_editor.cpp src/layer/wheel_editor.cpp src/layer/mod_engine.cpp src/layer/map_colors.cpp src/layer/gamepad_view.cpp src/layer/mesh_colors.cpp src/layer/switches.cpp src/layer/zone_light.cpp src/layer/perf.cpp src/layer/render_hooks.cpp
   app/main.cpp
   ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp
   ${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp ${IMGUI_DIR}/backends/imgui_impl_win32.cpp)
