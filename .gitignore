@@ -8,3 +8,13 @@ dist/
 *.zip
 .vscode/
 .idea/
+run/
+__pycache__/
+# the packaged launcher folder (binaries + copies of data/)
+ASTRO V2/
+# images taken from the game (made locally from your own copy with tools/*_build.py)
+data/wheels/
+data/gamepad_sheet.png
+data/gamepad_sheet.rgba
+# kept private: changes Comp Hub's own unlock checks
+mods_dll/unlock_all.cpp

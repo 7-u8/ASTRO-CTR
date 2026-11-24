@@ -1,4 +1,5 @@
 #include "nitro_backend.h"
+#include "switches.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -62,6 +63,7 @@ bool ReadSelf(uintptr_t a, void* out, size_t n) {
     return ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void*>(a), out, n, &got) && got == n;
 }
 bool WriteSelf(uintptr_t a, const void* in, size_t n) {
+    JournalWrite("nitro", a, in, n);
     SIZE_T put = 0;
     return WriteProcessMemory(GetCurrentProcess(), reinterpret_cast<void*>(a), in, n, &put) && put == n;
 }
@@ -91,6 +93,7 @@ struct Curve {
     Slot slot;
     const unsigned char* keys;
     unsigned char orig[kObjSize];
+    float last[3][16];      // what this mod wrote last in each channel block (equal to orig until written)
 };
 
 class GuestBackend final : public IVisualBackend {
@@ -211,7 +214,7 @@ private:
         if (c) want_[s] = *c;
     }
 
-    bool Write(const Curve& cv) {
+    bool Write(Curve& cv) {
         float orig[3];
         for (int ch = 0; ch < 3; ++ch) std::memcpy(&orig[ch], cv.orig + kBlockAt[ch] + 8, 4);
         float target[3] = {orig[0], orig[1], orig[2]};
@@ -223,20 +226,29 @@ private:
             const float lw = Luma(w), lo = Luma(orig) * (cv.slot == kSmoke ? 1.0f : brightness_);
             for (int ch = 0; ch < 3; ++ch) target[ch] = lw > 1e-4f ? std::min(w[ch] * lo / lw, 8.0f) : 0.0f;
         }
+        // A curve the game freed is soon reused for other objects (pointers, vtables): writing there crashed the game
+        // (2026-11-01, write journal: a level exit freed a curve during the 8 s search, the scaled "floats" turned
+        // the pointer 0x101e601930 into 0x0e1e465a3f, the exact address the game then faulted on). So a block is only
+        // written while the curve's keys are still in place and the block holds exactly the game's bytes or ours.
+        if (!KeysAt(cv.addr, cv.keys)) return false;
         bool ok = true;
         for (int ch = 0; ch < 3; ++ch) {
             if (orig[ch] == 0) continue;   // channel without a curve: cannot be scaled
-            float blk[16];
+            float blk[16], cur[16];
             std::memcpy(blk, cv.orig + kBlockAt[ch], sizeof blk);
             for (float& f : blk) f *= target[ch] / orig[ch];
-            ok &= WriteSelf(cv.addr + kBlockAt[ch], blk, sizeof blk);
+            if (!ReadSelf(cv.addr + kBlockAt[ch], cur, sizeof cur)) { ok = false; continue; }
+            if (!std::memcmp(cur, blk, sizeof cur)) { std::memcpy(cv.last[ch], blk, sizeof blk); continue; }   // already right
+            if (std::memcmp(cur, cv.orig + kBlockAt[ch], sizeof cur) && std::memcmp(cur, cv.last[ch], sizeof cur)) { ok = false; continue; }
+            if (WriteSelf(cv.addr + kBlockAt[ch], blk, sizeof blk)) std::memcpy(cv.last[ch], blk, sizeof blk);
+            else ok = false;
         }
         return ok;
     }
 
     bool ApplyLocked() {
         bool ok = true;
-        for (const Curve& cv : curves_)
+        for (Curve& cv : curves_)
             if (KeysAt(cv.addr, cv.keys)) ok &= Write(cv);   // never write a copy the game has freed
         if (!ok) Logger::Instance().Error("nitro colour write failed");
         return ok;
@@ -475,7 +487,7 @@ private:
     // The shown kart's paint is its own resolved command stream: 0x24 | ptr | 0x1e | 0 | P | R G B A | 0x1f ...
     // Body colour = <kart material object> + 0x2b0 (pointer scans + checks in game 2026-10-30: writing there turned
     // the kart body magenta). Colours 2 and 3 follow in the same block with the same structure and the same P.
-    // Paths to the material object, tried in order (EU 1.21 eboot data). The first was found both on the
+    // Paths to the material object, tried in order (EU 1.21 eboot data; the USA 1.21 eboot has them at the same addresses). The first was found both on the
     // customization screen and in a race (pointer scans intersected, 2026-10-30); the second only on the
     // customization screen, the third only inside the Paint Job menu.
     struct KartPath { uintptr_t root; int n; uint32_t off[4]; };
@@ -547,6 +559,7 @@ private:
 
     // Called every 100 ms: follows the path, (re)finds the 3 colours when the kart was rebuilt, writes the wanted ones.
     void FastPaintTickLocked() {
+        if (Off("paint")) return;   // test run: no kart paint writes (see switches.h)
         uint64_t p3 = 0, sig = 0;
         // 1. the kart already found, while every target still passes the checks. In races the pointer paths can lead
         //    elsewhere (they differ per track) but the shown kart's paint stays where it was (two races, 2026-10-30);
@@ -636,9 +649,42 @@ private:
                 }
     }
 
+    // Research hook: %APPDATA%\ASTRO-CTR\poke.txt with lines "<hex addr> r g b a" writes those 4 floats from inside
+    // the game (writes from another process do not show), only where a resolved colour command
+    // (0x24 | ptr | 0x1e | 0 | P | RGBA | 0x1f) sits; "* <hex addr> r g b a" writes any 16-byte-aligned address.
+    // The file is renamed to poke.done with one result line per request.
+    void PokeFile() {
+        const char* appdata = std::getenv("APPDATA");
+        if (!appdata) return;
+        const std::string dir = std::string(appdata) + "\\ASTRO-CTR\\";
+        FILE* f = std::fopen((dir + "poke.txt").c_str(), "r");
+        if (!f) return;
+        std::string report;
+        char line[256];
+        while (std::fgets(line, sizeof line, f)) {
+            const bool raw = line[0] == '*';
+            unsigned long long a = 0;
+            float v[4];
+            if (std::sscanf(line + (raw ? 1 : 0), "%llx %f %f %f %f", &a, &v[0], &v[1], &v[2], &v[3]) != 5) continue;
+            uint64_t p;
+            char buf[96];
+            const bool ok = raw ? (a % 16 == 0 && IsHeap(a)) : PaintCmdAt(uintptr_t(a), p);
+            float old[4] = {};
+            if (ok && ReadSelf(uintptr_t(a), old, 16)) std::memcpy(reinterpret_cast<void*>(uintptr_t(a)), v, 16);
+            std::snprintf(buf, sizeof buf, "%llx %s was %g %g %g %g\n", a, ok ? "written" : "refused", old[0], old[1], old[2], old[3]);
+            report += buf;
+        }
+        std::fclose(f);
+        std::remove((dir + "poke.done").c_str());
+        std::rename((dir + "poke.txt").c_str(), (dir + "poke.done").c_str());
+        if (FILE* o = std::fopen((dir + "poke.done").c_str(), "a")) { std::fputs(("--- result\n" + report).c_str(), o); std::fclose(o); }
+        Logger::Instance().Info("poke: " + report);
+    }
+
     // Copies appear when a race loads and disappear after it: search every 5 s until found, then every 20 s
     // (every 5 s while a custom underglow is on: the game re-creates it in blue whenever the kart is reloaded).
     void Search() {
+        NameThread(L"astro:nitro");
         SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_LOWEST);   // the game's threads always come first
         while (!stop_) {
             SearchOnce();
@@ -648,15 +694,21 @@ private:
                 Sleep(100);
                 std::lock_guard<std::mutex> l(mu_);
                 FastPaintTickLocked();   // direct path: instant, no search
+                if (i % 10 == 0) PokeFile();
             }
         }
     }
 
     void SearchOnce() {
+        if (Off("nitro")) return;   // test run: no memory search and no nitro / underglow writes (see switches.h)
         const auto t0 = GetTickCount64();
         std::vector<uintptr_t> bases, glows;
-        const auto searcher = std::boyer_moore_horspool_searcher(kKeys[0], kKeys[0] + kKeysLen);
-        const auto glow_searcher = std::boyer_moore_horspool_searcher(kGlowOrig, kGlowOrig + 16);
+        // Both patterns are looked for in ONE pass, at 4-byte steps (floats are 4-aligned), by comparing their first 8
+        // bytes: the old std::search per pattern over 16 MB chunks took ~8 s of a core per 4 GB heap pass and made the
+        // game 15 fps slower (measured 2026-11-01: 176 fps without ASTRO, 160 with it, 176 again with this part off).
+        std::uint64_t key0 = 0, glow0 = 0;
+        std::memcpy(&key0, kKeys[0], 8);
+        std::memcpy(&glow0, kGlowOrig, 8);
         // kart paint: keys from the schemes learnt in the previous pass (only while a custom paint is on)
         bool paint;
         std::vector<Rgb> key_rgbs;
@@ -672,7 +724,7 @@ private:
         std::vector<std::pair<uintptr_t, Rgb>> streams;
         std::vector<std::pair<uintptr_t, int>> hits;
         std::vector<unsigned char> buf;
-        constexpr size_t kChunk = 16u << 20;
+        constexpr size_t kChunk = 1u << 20;      // small chunks stay in the CPU's cache: the game's own data is not pushed out
         MEMORY_BASIC_INFORMATION m{};
         for (uintptr_t a = 0x1000000000ull; !stop_ && a < 0x8000000000ull; a = uintptr_t(m.BaseAddress) + m.RegionSize) {
             if (!VirtualQuery(reinterpret_cast<void*>(a), &m, sizeof m)) break;
@@ -682,19 +734,19 @@ private:
                 size_t n = std::min<size_t>(kChunk + kKeysLen, end - p);
                 buf.resize(n);
                 if (!ReadSelf(p, buf.data(), n)) continue;
-                for (auto it = buf.begin(); it != buf.end(); ++it) {
-                    it = std::search(it, buf.end(), searcher);
-                    if (it == buf.end()) break;
-                    uintptr_t obj = p + size_t(it - buf.begin()) - kKeysAt;
-                    bool all = true;
-                    for (int L = 1; L < kLayers && all; ++L) all = KeysAt(obj + kLayerOffset[L], kKeys[L]);
-                    if (all && (bases.empty() || bases.back() != obj)) bases.push_back(obj);
-                }
-                for (auto it = buf.begin(); it != buf.end(); ++it) {
-                    it = std::search(it, buf.end(), glow_searcher);
-                    if (it == buf.end()) break;
-                    uintptr_t a = p + size_t(it - buf.begin());
-                    if (a % 4 == 0 && (glows.empty() || glows.back() != a)) glows.push_back(a);
+                const size_t own = std::min<size_t>(kChunk, end - p);   // start positions of this chunk only (the extra bytes are for matches that cross its end)
+                for (size_t i = 0; i < own && i + 8 <= n; i += 4) {
+                    std::uint64_t v;
+                    std::memcpy(&v, &buf[i], 8);
+                    if (v == key0) {
+                        if (i + kKeysLen > n || std::memcmp(&buf[i], kKeys[0], kKeysLen) || p + i < kKeysAt) continue;
+                        uintptr_t obj = p + i - kKeysAt;
+                        bool all = true;
+                        for (int L = 1; L < kLayers && all; ++L) all = KeysAt(obj + kLayerOffset[L], kKeys[L]);
+                        if (all && (bases.empty() || bases.back() != obj)) bases.push_back(obj);
+                    } else if (v == glow0) {
+                        if (i + 16 <= n && !std::memcmp(&buf[i], kGlowOrig, 16)) glows.push_back(p + i);
+                    }
                 }
                 if (paint) PaintScanChunk(p, buf, key_rgbs, keys, filter, streams, hits);
             }
@@ -710,8 +762,10 @@ private:
         for (uintptr_t b : bases) {
             if (std::any_of(curves_.begin(), curves_.end(), [b](const Curve& c) { return c.addr == b; })) continue;
             auto add = [&](uintptr_t addr, Slot s, const unsigned char* keys) {
-                Curve c{addr, s, keys, {}};
-                if (!ReadSelf(addr, c.orig, kObjSize)) return;
+                Curve c{addr, s, keys, {}, {}};
+                // the search took seconds: the curve must still be there now, before its bytes count as the game's
+                if (!KeysAt(addr, keys) || !ReadSelf(addr, c.orig, kObjSize) || !KeysAt(addr, keys)) return;
+                for (int ch = 0; ch < 3; ++ch) std::memcpy(c.last[ch], c.orig + kBlockAt[ch], sizeof c.last[ch]);
                 curves_.push_back(c);
                 Write(curves_.back());
                 ++added;

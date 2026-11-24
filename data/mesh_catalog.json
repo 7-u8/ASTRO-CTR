@@ -1,0 +1,96 @@
+{
+ "meshes": [
+  {
+   "name": "tnt",
+   "probe": "fcff7f3fd93beb4125081d426a5a7d421e7a7fbf84d7823d228952b9ff2020ffec386e359768000004000000050000000000000000000000eb4301bf547dae3a",
+   "probe_at": 4092,
+   "colours": [
+    {
+     "key": "tnt_body",
+     "rgba": "ff2020ff",
+     "count": 1034
+    },
+    {
+     "key": "tnt_band",
+     "rgba": "fff220ff",
+     "count": 344
+    }
+   ]
+  },
+  {
+   "name": "nitro",
+   "probe": "ca01c901ed91cac1d54812c2144199428a69e63eef264bbf59b1d13e54c456ff29b6473488b23abed171b03c9c0d423fea7307c2ad880fc2007e844219146abd",
+   "probe_at": 20900,
+   "colours": [
+    {
+     "key": "nitro_body",
+     "rgba": "54c456ff",
+     "count": 782
+    },
+    {
+     "key": "nitro_band",
+     "rgba": "fffd43ff",
+     "count": 343
+    }
+   ]
+  }
+ ],
+ "vectors": [
+  {
+   "key": "potion_green",
+   "value": "b9b8b83defed6d3fe4e4643e0000803f"
+  },
+  {
+   "key": "potion_red",
+   "value": "e9e8683fc0c0c03c000000000000803f"
+  },
+  {
+   "key": "shield_green",
+   "value": "d3d2523ffffd7d3f8a88883e"
+  },
+  {
+   "key": "shield_blue",
+   "value": "8a88883eb0aeae3efffd7d3f"
+  },
+  {
+   "key": "shield_blue",
+   "value": "b2b0303dafb0303ee1e0603f"
+  },
+  {
+   "key": "shield_blue",
+   "value": "aaa8a83eb5b4b43ef1f0703f"
+  },
+  {
+   "key": "shield_blue",
+   "value": "d2d4543ea4a2a23ef1f0703f"
+  },
+  {
+   "key": "shield_blue",
+   "value": "aaa8a83e9d9c1c3ff1f0703f"
+  },
+  {
+   "key": "shield_blue",
+   "value": "e7e6e63e9796163f0000803f"
+  },
+  {
+   "key": "shield_blue",
+   "value": "00000000b2b2b23ee1e0603f"
+  },
+  {
+   "key": "shield_blue",
+   "value": "00000000eae8e83ef1f0703f"
+  },
+  {
+   "key": "shield_blue",
+   "value": "000000009796163ff1f0703f"
+  },
+  {
+   "key": "shield_blue",
+   "value": "00000000e4e2e23ef1f0703f"
+  },
+  {
+   "key": "shield_blue",
+   "value": "00000000b3b1313f0000803f"
+  }
+ ]
+}

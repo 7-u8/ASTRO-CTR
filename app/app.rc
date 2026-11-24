@@ -1,0 +1,5 @@
+#include "resource.h"
+IDI_APP ICON "assets/icon.ico"
+IDR_MARK RCDATA "assets/mark.png"
+IDR_WORDMARK RCDATA "assets/wordmark.png"
+1 24 "app.manifest"

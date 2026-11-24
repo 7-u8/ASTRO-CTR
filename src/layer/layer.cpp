@@ -18,6 +18,9 @@
 
 #include "../diagnostics/log.h"
 #include "overlay.h"
+#include "perf.h"
+#include "render_hooks.h"
+#include "switches.h"
 
 #define LAYER_EXPORT extern "C" __declspec(dllexport)
 
@@ -152,6 +155,7 @@ VKAPI_ATTR VkResult VKAPI_CALL CreateDevice(VkPhysicalDevice pd, const VkDeviceC
     inst->GetQueueFamilyProps(pd, &n, fams.data());
     for (uint32_t i = 0; i < n; ++i) d->graphics_family.push_back((fams[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0);
     { std::lock_guard<std::mutex> l(g_mu); g_dev[KeyOf(*out)] = d; }
+    if (g_active && !Off("render")) RenderHooks_OnDevice(d);   // render pass measuring and FULL OPTIMIZE
     if (g_active) Logger::Instance().Info("vkCreateDevice ok (" + std::to_string(n) + " queue families)");
     return r;
 }
@@ -203,6 +207,7 @@ VKAPI_ATTR void VKAPI_CALL DestroySwapchainKHR(VkDevice dev, VkSwapchainKHR sc, 
 
 VKAPI_ATTR VkResult VKAPI_CALL QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* info) {
     DeviceFns* d = FindDev(KeyOf(queue));
+    if (g_active && !Off("render")) { Perf_OnPresent(); RenderHooks_OnPresent(); }
     if (!g_active || info->swapchainCount != 1) return d->QueuePresentKHR(queue, info);
     uint32_t family = UINT32_MAX;
     {
@@ -228,6 +233,7 @@ PFN_vkVoidFunction Intercept(const char* n) {
     HOOK(CreateDevice); HOOK(DestroyDevice); HOOK(GetDeviceQueue); HOOK(GetDeviceQueue2);
     HOOK(CreateSwapchainKHR); HOOK(DestroySwapchainKHR); HOOK(QueuePresentKHR);
 #undef HOOK
+    if (g_active && !Off("render")) return RenderHooks_Intercept(n);   // command recording: only inside the game
     return nullptr;
 }
 
