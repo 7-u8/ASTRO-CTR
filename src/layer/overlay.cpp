@@ -14,6 +14,8 @@
 #include "../config/config.h"
 #include "../diagnostics/log.h"
 #include "menu.h"
+#include "gamepad_view.h"
+#include "players_esp.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
@@ -234,7 +236,8 @@ bool InitImGui(Swap* s, VkQueue queue, uint32_t family, HWND hwnd) {
         ImGuiIO& io = ImGui::GetIO();
         io.IniFilename = nullptr;
         io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange | ImGuiConfigFlags_NavEnableKeyboard;
-        Menu_ApplyStyle();
+        AstroUi_Setup();   // the ASTRO app look and fonts (the F8 menu is the app)
+        GamepadView_Setup();   // the game's button art, for the gamepad view of the MISC page
         if (!ImGui_ImplWin32_Init(hwnd)) { Logger::Instance().Error("ImGui Win32 init failed"); return false; }
         g_ctx = true;
     }
@@ -277,7 +280,14 @@ void Overlay_EnsureLog() {
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
     Logger::Instance().Open(dir / "astro_ctr.log");
-    Logger::Instance().Info("---- ASTRO CTR layer loaded in sacredfire.exe (pid " + std::to_string(GetCurrentProcessId()) + ")");
+    // which DLL the game really loaded (the Vulkan loader may take another registered copy): its path and build time
+    HMODULE self = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       reinterpret_cast<LPCWSTR>(&Overlay_EnsureLog), &self);
+    wchar_t path[MAX_PATH] = {};
+    GetModuleFileNameW(self, path, MAX_PATH);
+    Logger::Instance().Info("---- ASTRO CTR layer loaded in sacredfire.exe (pid " + std::to_string(GetCurrentProcessId()) + "), build " +
+                            __DATE__ + " " + __TIME__ + ", " + std::filesystem::path(path).string());
 }
 
 void Overlay_SignalLayerLoaded() {
@@ -344,7 +354,12 @@ VkSemaphore Overlay_OnPresent(DeviceFns* d, VkQueue queue, uint32_t family, HWND
     if (g_toast_until == 0.0) g_toast_until = Now() + kToastSeconds;
     const bool toast = Now() < g_toast_until;
     Menu_Tick();   // rainbow colours keep moving while the menu is closed
-    if (!g_menu_open && !toast && g_ready_signalled) return VK_NULL_HANDLE;   // nothing to draw: zero cost
+    const bool pad_view = GamepadView_Enabled();   // MISC page: the pad on the screen
+    const bool esp = PlayersEsp_Enabled();         // PLAYERS page: karts marked on the screen
+    static bool was_open = false;
+    if (was_open && !g_menu_open) AstroUi_Flush();   // closed: save what the pages still had pending
+    was_open = g_menu_open;
+    if (!g_menu_open && !toast && !pad_view && !esp && g_ready_signalled) return VK_NULL_HANDLE;   // nothing to draw: zero cost
 
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplWin32_NewFrame();
@@ -354,6 +369,8 @@ VkSemaphore Overlay_OnPresent(DeviceFns* d, VkQueue queue, uint32_t family, HWND
     io.MouseDrawCursor = g_menu_open;
     ImGui::NewFrame();
     g_diag.frames++;
+    if (esp) PlayersEsp_Draw();
+    if (pad_view) GamepadView_Draw();
     if (toast && !g_menu_open) Menu_DrawToast();
     if (g_menu_open) Menu_Draw(&g_menu_open, g_diag);
     ImGui::Render();

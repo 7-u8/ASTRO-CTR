@@ -19,7 +19,7 @@
 struct Node { uint64_t addr; int parent; uint32_t off; };   // addr holds a pointer to (child addr - off)
 
 static constexpr uint64_t kGuestLo = 0x800000000ull, kGuestHi = 0x8000000000ull;
-static constexpr uint64_t kImageLo = 0x800000000ull, kImageHi = 0x804000000ull;   // eboot image (EU 1.21, < 64 MB)
+static constexpr uint64_t kImageLo = 0x800000000ull, kImageHi = 0x804000000ull;   // eboot image (EU/USA 1.21, < 64 MB)
 
 static DWORD FindPid() {
     HANDLE s = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);

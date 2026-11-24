@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ASTRO_CTR VERSION 1.0.0 LANGUAGES CXX)
+project(ASTRO_CTR VERSION 1.1.0 LANGUAGES CXX RC)
 add_compile_definitions(ASTRO_VERSION="${PROJECT_VERSION}" ASTRO_VERSION_W=L"${PROJECT_VERSION}")
 
 set(CMAKE_CXX_STANDARD 17)
@@ -32,30 +32,52 @@ add_library(astro_core STATIC
   src/config/config.cpp
   src/diagnostics/log.cpp
   src/game/backend.cpp
+  src/config/presets.cpp
+  src/config/fx_protocol.cpp
+  src/config/wheel_protocol.cpp
+  src/config/mods_protocol.cpp
+  src/core/tex_recolor.cpp
+  src/core/paint_patterns.cpp
   src/core/controller.cpp)
 target_include_directories(astro_core PUBLIC src)
 
 # ---- in-game module: Vulkan layer VK_LAYER_ASTRO_ctr with the ImGui menu ----
 set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/third_party/imgui)
 add_library(astro_ctr SHARED
-  src/layer/layer.cpp src/layer/overlay.cpp src/layer/menu.cpp src/layer/nitro_backend.cpp
+  src/layer/layer.cpp src/layer/overlay.cpp src/layer/menu.cpp src/layer/nitro_backend.cpp src/layer/fx_editor.cpp src/layer/wheel_editor.cpp src/layer/mod_engine.cpp src/layer/map_colors.cpp src/layer/gamepad_view.cpp src/layer/mesh_colors.cpp src/layer/switches.cpp src/layer/zone_light.cpp src/layer/perf.cpp src/layer/render_hooks.cpp src/layer/players_esp.cpp
+  app/main.cpp
   ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp
   ${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp ${IMGUI_DIR}/backends/imgui_impl_win32.cpp)
 target_include_directories(astro_ctr PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends ${VULKAN_INCLUDE_DIR})
-target_compile_definitions(astro_ctr PRIVATE VK_NO_PROTOTYPES IMGUI_IMPL_VULKAN_NO_PROTOTYPES VK_USE_PLATFORM_WIN32_KHR)
-target_link_libraries(astro_ctr PRIVATE astro_core dwmapi gdi32)
+target_compile_definitions(astro_ctr PRIVATE VK_NO_PROTOTYPES IMGUI_IMPL_VULKAN_NO_PROTOTYPES VK_USE_PLATFORM_WIN32_KHR
+  ASTRO_IN_GAME)   # app/main.cpp: the app's pages as the F8 menu
+target_link_libraries(astro_ctr PRIVATE astro_core dwmapi gdi32 hid setupapi comdlg32 shell32 ole32 windowscodecs uuid psapi)
 set_target_properties(astro_ctr PROPERTIES OUTPUT_NAME "astro_ctr" PREFIX "")
 if(NOT MSVC)
   target_link_options(astro_ctr PRIVATE -static -static-libgcc -static-libstdc++)
 endif()
 add_custom_command(TARGET astro_ctr POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/src/layer/VkLayer_ASTRO_ctr_implicit.json $<TARGET_FILE_DIR:astro_ctr>)
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/src/layer/VkLayer_ASTRO_ctr_implicit.json $<TARGET_FILE_DIR:astro_ctr>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/src/layer/vfx_catalog.json $<TARGET_FILE_DIR:astro_ctr>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/data/wheel_catalog.json $<TARGET_FILE_DIR:astro_ctr>
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/data/wheels $<TARGET_FILE_DIR:astro_ctr>/wheels)
 
-# ---- launcher: registers the layer while its window is open ----
-add_executable(astro_launcher launcher/main.cpp)
-set_target_properties(astro_launcher PROPERTIES OUTPUT_NAME "ASTRO_CTR_Launcher")
+# ---- ASTRO app: the window kept open while playing (registers the layer, edits colours, manages presets) ----
+add_executable(astro_app WIN32 app/main.cpp app/app.rc
+  ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp
+  ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp ${IMGUI_DIR}/backends/imgui_impl_win32.cpp)
+set_target_properties(astro_app PROPERTIES OUTPUT_NAME "ASTRO_CTR")
+target_include_directories(astro_app PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends app)
+target_link_libraries(astro_app PRIVATE astro_core psapi d3d11 d3dcompiler dxgi dwmapi windowscodecs ole32 comdlg32 shell32 gdi32 hid setupapi)
 if(NOT MSVC)
-  target_link_options(astro_launcher PRIVATE -municode -static -static-libgcc -static-libstdc++)
+  target_link_options(astro_app PRIVATE -municode -mwindows -static -static-libgcc -static-libstdc++)
+endif()
+
+# ---- ASTRO CTR V2: the launcher in a terminal (animated ASCII art); runs like ASTRO_CTR.exe ----
+add_executable(astro_v2 launcher_v2/main.cpp launcher_v2/v2.rc)
+set_target_properties(astro_v2 PROPERTIES OUTPUT_NAME "ASTROCTRV2")
+if(NOT MSVC)
+  target_link_options(astro_v2 PRIVATE -municode -static -static-libgcc -static-libstdc++)
 endif()
 
 # ---- tests ----

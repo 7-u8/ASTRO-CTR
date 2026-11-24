@@ -13,14 +13,26 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <sstream>
+#include <vector>
 #include <thread>
 
 #include "imgui.h"
 
 #include "../config/config.h"
+#include "../config/presets.h"
 #include "../core/controller.h"
+#include "../core/paint_patterns.h"
 #include "../diagnostics/log.h"
+#include "fx_editor.h"
+#include "map_colors.h"
+#include "mesh_colors.h"
+#include "zone_light.h"
+#include "mod_engine.h"
+#include "wheel_editor.h"
 #include "nitro_backend.h"
+#include "switches.h"
+#include "players_esp.h"
 
 namespace astro {
 
@@ -49,88 +61,6 @@ State g;
 std::recursive_mutex g_mu;
 std::thread g_rainbow;
 std::atomic<bool> g_rainbow_stop{false};
-
-ImVec4 Col(const Rgba& c) { return ImVec4(c.r / 255.f, c.g / 255.f, c.b / 255.f, c.a / 255.f); }
-Rgba FromCol(const float* f) {
-    auto b = [](float v) { return std::uint8_t(v <= 0 ? 0 : v >= 1 ? 255 : int(v * 255.f + 0.5f)); };
-    return Rgba{b(f[0]), b(f[1]), b(f[2]), b(f[3])};
-}
-
-// ---------------- colour helpers ----------------
-struct Hsv { float h, s, v; };
-Hsv ToHsv(const Rgba& c) {
-    float r = c.r / 255.f, g2 = c.g / 255.f, b = c.b / 255.f, h, s, v;
-    ImGui::ColorConvertRGBtoHSV(r, g2, b, h, s, v);
-    return {h, s, v};
-}
-Rgba FromHsv(float h, float s, float v) {
-    h -= std::floor(h);
-    float r, g2, b;
-    ImGui::ColorConvertHSVtoRGB(h, std::clamp(s, 0.f, 1.f), std::clamp(v, 0.f, 1.f), r, g2, b);
-    const float f[4] = {r, g2, b, 1};
-    return FromCol(f);
-}
-Rgba Mix(const Rgba& a, const Rgba& b, float t) {
-    auto m = [t](std::uint8_t x, std::uint8_t y) { return std::uint8_t(std::lround(x + (y - x) * t)); };
-    return Rgba{m(a.r, b.r), m(a.g, b.g), m(a.b, b.b), 255};
-}
-Rgba Scale(const Rgba& a, float k) {
-    auto m = [k](std::uint8_t x) { return std::uint8_t(std::clamp(std::lround(x * k), 0L, 255L)); };
-    return Rgba{m(a.r), m(a.g), m(a.b), 255};
-}
-
-// ---------------- kart paint patterns ----------------
-// A slot = tint (layer 0, the sheen) + a 6-colour ramp (layers 1..6, the base colour). A pattern builds the 7
-// layers from one colour. These are ASTRO's own looks made from that structure, not copies of the game's schemes.
-// (names chosen not to look like the game's own paint types such as Electron or Atomic: these are colour layouts only)
-const char* kPatterns[] = {"Solid", "Glow", "Icy", "Metal", "Duo-tone", "Pastel", "Dark", "Rainbow layers"};
-void MakePattern(int p, const Rgba& c, Rgba out[kPaintLayers]) {
-    const Hsv h = ToHsv(c);
-    const Rgba white{255, 255, 255, 255}, black{0, 0, 0, 255};
-    switch (p) {
-    default:   // Solid
-        for (int i = 0; i < kPaintLayers; ++i) out[i] = c;
-        break;
-    case 1: {  // Electron: deep base, bright electric highlights, a cyan-shifted glow
-        const Rgba elec = FromHsv(h.h + 0.08f, 0.85f, 1.0f);
-        Rgba r[] = {elec, Scale(c, 0.35f), c, white, elec, Scale(c, 0.6f), FromHsv(h.h - 0.05f, 1.0f, 1.0f)};
-        std::copy(r, r + kPaintLayers, out);
-        break;
-    }
-    case 2: {  // Crystal: pale, icy, glassy
-        Rgba r[] = {white, Mix(c, white, 0.55f), Mix(c, white, 0.8f), Mix(c, white, 0.35f), white, Mix(c, white, 0.65f),
-                    Mix(FromHsv(h.h + 0.1f, 0.4f, 1.0f), white, 0.4f)};
-        std::copy(r, r + kPaintLayers, out);
-        break;
-    }
-    case 3: {  // Chrome: metallic greys with a hint of the colour
-        auto g = [&](float v) { return Mix(Rgba{std::uint8_t(v * 255), std::uint8_t(v * 255), std::uint8_t(v * 255), 255}, c, 0.18f); };
-        Rgba r[] = {white, g(0.25f), g(0.95f), g(0.5f), g(1.0f), g(0.3f), g(0.75f)};
-        std::copy(r, r + kPaintLayers, out);
-        break;
-    }
-    case 4: {  // Neon: saturated colour with its complement
-        const Rgba sat = FromHsv(h.h, 1.0f, 1.0f), comp = FromHsv(h.h + 0.5f, 1.0f, 1.0f);
-        Rgba r[] = {comp, sat, sat, comp, sat, comp, sat};
-        std::copy(r, r + kPaintLayers, out);
-        break;
-    }
-    case 5: {  // Pearl: white with soft pastel shifts
-        Rgba r[] = {white, white, Mix(c, white, 0.7f), Mix(FromHsv(h.h + 0.08f, 0.5f, 1), white, 0.6f), white,
-                    Mix(FromHsv(h.h - 0.08f, 0.5f, 1), white, 0.6f), Mix(c, white, 0.85f)};
-        std::copy(r, r + kPaintLayers, out);
-        break;
-    }
-    case 6: {  // Galaxy: dark space with bright colour and magenta
-        Rgba r[] = {FromHsv(h.h + 0.15f, 1, 1), Mix(black, c, 0.25f), c, FromHsv(0.83f, 0.9f, 0.9f), black, Scale(c, 0.6f), white};
-        std::copy(r, r + kPaintLayers, out);
-        break;
-    }
-    case 7:    // Spectrum: the colour wheel across the layers, starting at the chosen colour
-        for (int i = 0; i < kPaintLayers; ++i) out[i] = FromHsv(h.h + i / float(kPaintLayers), std::max(h.s, 0.7f), std::max(h.v, 0.8f));
-        break;
-    }
-}
 
 // ---------------- rainbow ----------------
 bool Rainbow(const std::string& id) {
@@ -180,6 +110,15 @@ Config Effective(double t) {
     return c;
 }
 
+// paint layers never edited anywhere (all at their defaults): the menu then starts from the kart's own colours
+bool PaintIsDefault(const KartPaint& p) {
+    const KartPaint d;
+    for (int s = 0; s < kPaintSlots; ++s)
+        for (int l = 0; l < kPaintLayers; ++l)
+            if (!(p.layer[s][l] == d.layer[s][l])) return false;
+    return true;
+}
+
 void Push() {
     g.ctl->SetConfig(Effective(Now() - g.t0));
     g.last = g.ctl->Apply();
@@ -191,7 +130,14 @@ void EnsureLoaded() {
     g.t0 = Now();
     LoadResult lr = LoadConfig(DefaultConfigPath());
     g.base = lr.config;
-    g.ctl = std::make_unique<VisualController>(std::unique_ptr<IVisualBackend>(CreateGuestBackend()));
+    if (!Off("fx")) FxEditor_Start();           // effects editor of the ASTRO app
+    if (!Off("wheels")) WheelEditor_Start();    // wheel editor of the ASTRO app
+    if (!Off("mods")) ModEngine_Start();        // MODS page of the ASTRO app
+    if (!Off("maps")) MapColors_Start();        // MAPS page of the ASTRO app
+    if (!Off("mesh")) MeshColors_Start();       // ITEMS page: TNT / Nitro crate colours
+    if (!Off("light")) ZoneLight_Start();       // MAPS page: fog, sun, ambient, colour grading
+    g.ctl = std::make_unique<VisualController>(Off("backend") ? std::unique_ptr<IVisualBackend>(new UndiscoveredBackend)
+                                                              : std::unique_ptr<IVisualBackend>(CreateGuestBackend()));
     g.info = g.ctl->Backend().Probe();
     Push();
     g.load_msg = lr.file_found ? (lr.recovered_from_error ? "config was damaged: defaults used" : "config loaded")
@@ -204,193 +150,30 @@ void EnsureLoaded() {
     if (!g_rainbow.joinable()) {
         g_rainbow_stop = false;
         g_rainbow = std::thread([] {
+            NameThread(L"astro:config");
             SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+            // the ASTRO app sets this event after writing config.json: apply the new file at once
+            HANDLE pushed = CreateEventW(nullptr, FALSE, FALSE, kConfigPushedEvent);
             while (!g_rainbow_stop) {
                 Sleep(50);
                 std::lock_guard<std::recursive_mutex> l(g_mu);
+                if (pushed && WaitForSingleObject(pushed, 0) == WAIT_OBJECT_0 && g.loaded && g.ctl) {
+                    LoadResult lr = LoadConfig(DefaultConfigPath());
+                    if (!lr.recovered_from_error) {
+                        g.base = lr.config;
+                        g.dirty = false;
+                        g.paint_touched = g.base.paint.enabled && !PaintIsDefault(g.base.paint);   // app colours win; untouched: kart's own
+                        Push();
+                    }
+                }
                 if (g.loaded && g.ctl && !g.base.fx.rainbow.empty()) Push();
             }
+            if (pushed) CloseHandle(pushed);
         });
     }
 }
 
-void StatusLine(bool enabled, bool ok) {
-    if (!enabled) { ImGui::TextDisabled("off - the game's original colour"); return; }
-    if (ok) ImGui::TextColored(ImVec4(0.35f, 0.9f, 0.45f, 1), "applied in game");
-    else ImGui::TextColored(ImVec4(1.0f, 0.65f, 0.2f, 1), "NOT applied: this effect is not connected to the game yet");
-}
-
-// Colour picker bound to one config colour, with an "RGB" (rainbow) toggle when id is given.
-// Returns true when the user changed the colour or the toggle.
-bool ColorRow(const char* label, Rgba& c, const char* id = nullptr) {
-    bool changed = false;
-    if (id) {
-        ImGui::PushID(id);
-        bool on = Rainbow(id);
-        if (on) ImGui::PushStyleColor(ImGuiCol_Button, Col(FromHsv(float((Now() - g.t0) * g.base.fx.rainbow_speed), 0.9f, 0.9f)));
-        if (ImGui::SmallButton("RGB")) { SetRainbow(id, !on); changed = true; }
-        if (on) ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Rainbow: cycle this colour through every colour");
-        ImGui::PopID();
-        ImGui::SameLine();
-    }
-    float f[4] = {c.r / 255.f, c.g / 255.f, c.b / 255.f, 1.0f};
-    const ImGuiColorEditFlags fl = ImGuiColorEditFlags_DisplayHex | ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_NoAlpha;
-    if (ImGui::ColorEdit4(label, f, fl)) {
-        Rgba n = FromCol(f);
-        n.a = 255;
-        if (!(n == c)) { c = n; changed = true; }
-    }
-    return changed;
-}
-
-void Changed() {
-    Push();
-    g.dirty = true;
-}
-
-void RainbowSpeed() {
-    if (g.base.fx.rainbow.empty()) return;
-    if (ImGui::SliderFloat("Rainbow speed", &g.base.fx.rainbow_speed, 0.02f, 2.0f, "%.2f cycles/s", ImGuiSliderFlags_Logarithmic)) Changed();
-}
-
-void NitroTab() {
-    Config& cfg = g.base;
-    bool ch = false;
-    g.info = g.ctl->Backend().Probe();
-    if (g.info.status == BackendStatus::Ready && !g.last.normal_ok) Push();   // search just finished
-    const ImVec4 st = g.info.status == BackendStatus::Ready ? ImVec4(0.35f, 0.9f, 0.45f, 1)
-                    : g.info.status == BackendStatus::Error ? ImVec4(1, 0.35f, 0.3f, 1) : ImVec4(1, 0.8f, 0.3f, 1);
-    ImGui::TextColored(st, "%s", g.info.detail.c_str());
-    ImGui::SeparatorText("Nitro flame (normal and blue boost)");
-    ch |= ImGui::Checkbox("Custom colours##n", &cfg.normal.enabled);
-    ImGui::BeginDisabled(!cfg.normal.enabled);
-    ch |= ColorRow("Colour 1 (game: orange)##n", cfg.normal.color, "n1");
-    ch |= ColorRow("Colour 2 (game: red)##n", cfg.normal.color2, "n2");
-    ch |= ColorRow("Colour 3 (game: pink)##n", cfg.normal.color3, "n3");
-    ch |= ImGui::SliderFloat("Brightness##n", &cfg.normal.brightness, 0.25f, 8.0f, "x%.2f", ImGuiSliderFlags_Logarithmic);
-    ch |= ColorRow("Smoke##n", cfg.normal.smoke, "smoke");
-    ImGui::TextDisabled("Smoke keeps its own dark brightness; the colour sets its tint.");
-    RainbowSpeed();
-    ImGui::EndDisabled();
-    StatusLine(cfg.normal.enabled, g.last.normal_ok);
-    if (ImGui::Button("Reset nitro flame")) {
-        cfg.normal = NitroNormal{};
-        for (const char* id : {"n1", "n2", "n3", "smoke"}) SetRainbow(id, false);
-        ch = true;
-    }
-
-    ImGui::SeparatorText("Blue boost only");
-    ImGui::TextWrapped("The game draws the blue boost with the same colour curves as the normal boost, so the colours "
-                       "above change both. A separate blue-boost colour needs the switch the game uses at run time; "
-                       "it has not been found yet.");
-    if (ch) Changed();
-}
-
-void VehicleTab() {
-    Config& cfg = g.base;
-    bool ch = false;
-    // the underglow is found by the same background search: retry until it has been applied
-    if (cfg.champion.enabled && !g.last.champion_ok) Push();
-    ImGui::SeparatorText("Champion kart underglow");
-    ch |= ImGui::Checkbox("Custom underglow", &cfg.champion.enabled);
-    ImGui::BeginDisabled(!cfg.champion.enabled);
-    ch |= ColorRow("Colour##c", cfg.champion.lower_region, "glow");
-    ImGui::EndDisabled();
-    if (cfg.champion.enabled && !g.last.champion_ok) ImGui::TextColored(ImVec4(1, 0.8f, 0.3f, 1), "searching for the underglow in memory (takes ~10-20 s; show the Champion kart)");
-    else StatusLine(cfg.champion.enabled, g.last.champion_ok);
-    ImGui::TextDisabled("After the game reloads the kart it can show blue for a few seconds.");
-    if (ImGui::Button("Reset underglow")) { cfg.champion = Champion{}; SetRainbow("glow", false); ch = true; }
-
-    ImGui::SeparatorText("My kart paint");
-    if (cfg.paint.enabled && !g.last.paint_ok) Push();   // retry until the kart's colours are found
-    Rgba orig[kPaintSlots][kPaintLayers];
-    const bool known = g.ctl->Backend().KartPaintOriginal(&orig[0][0]);
-    auto use_kart_colours = [&] { std::memcpy(cfg.paint.layer, orig, sizeof orig); ch = true; };
-    bool enable = cfg.paint.enabled;
-    if (ImGui::Checkbox("Custom kart paint", &enable)) {
-        cfg.paint.enabled = enable;
-        // start from the kart's own colours, so only what the user changes looks different
-        if (enable && known && !g.paint_touched) use_kart_colours();
-        ch = true;
-    }
-    if (cfg.paint.enabled && known && !g.paint_seeded && !g.paint_touched) { use_kart_colours(); g.paint_seeded = true; }
-
-    ImGui::BeginDisabled(!cfg.paint.enabled);
-    // whole kart: one colour, or a pattern built from it
-    if (ColorRow("Whole kart##p", g.paint_all, "kart")) {
-        for (auto& sl : cfg.paint.layer) for (auto& c : sl) c = g.paint_all;
-        g.paint_touched = ch = true;
-    }
-    ImGui::SetNextItemWidth(140);
-    ImGui::Combo("Colour layout##patall", &g.pattern_all, kPatterns, IM_ARRAYSIZE(kPatterns));
-    ImGui::SameLine();
-    if (ImGui::Button("Pattern on whole kart")) {
-        for (int s = 0; s < kPaintSlots; ++s) MakePattern(g.pattern_all, Mix(g.paint_all, FromHsv(ToHsv(g.paint_all).h + s * 0.06f, 1, 1), 0.15f * s), cfg.paint.layer[s]);
-        g.paint_touched = ch = true;
-    }
-    static const char* kSlotName[kPaintSlots] = {"Slot 1 - main body", "Slot 2", "Slot 3"};
-    for (int s = 0; s < kPaintSlots; ++s) {
-        ImGui::PushID(s);
-        if (ImGui::CollapsingHeader(kSlotName[s])) {
-            const std::string sid = "s" + std::to_string(s + 1);
-            Rgba whole = cfg.paint.layer[s][1];
-            if (ColorRow("Whole slot", whole, sid.c_str())) {
-                for (auto& c : cfg.paint.layer[s]) c = whole;
-                g.paint_touched = ch = true;
-            }
-            ImGui::SetNextItemWidth(140);
-            ImGui::Combo("##pat", &g.pattern[s], kPatterns, IM_ARRAYSIZE(kPatterns));
-            ImGui::SameLine();
-            if (ImGui::Button("Apply pattern")) { MakePattern(g.pattern[s], whole, cfg.paint.layer[s]); g.paint_touched = ch = true; }
-            for (int l = 0; l < kPaintLayers; ++l) {
-                char label[32];
-                if (l == 0) std::snprintf(label, sizeof label, "Tint (sheen)");
-                else std::snprintf(label, sizeof label, "Colour layer %d", l);
-                const std::string lid = sid + "l" + std::to_string(l);
-                if (ColorRow(label, cfg.paint.layer[s][l], lid.c_str())) g.paint_touched = ch = true;
-            }
-        }
-        ImGui::PopID();
-    }
-    RainbowSpeed();
-    if (ImGui::Button("Back to my kart's colours") && known) { use_kart_colours(); g.paint_touched = false; }
-    ImGui::EndDisabled();
-    if (cfg.paint.enabled && !g.last.paint_ok)
-        ImGui::TextColored(ImVec4(1, 0.8f, 0.3f, 1), "waiting for your kart (show it in the garage)");
-    else StatusLine(cfg.paint.enabled, g.last.paint_ok);
-    if (ImGui::Button("Reset kart paint")) {
-        cfg.paint.enabled = false;
-        std::string keep;   // drop every kart rainbow
-        for (const char* id : {"n1", "n2", "n3", "smoke", "glow"}) if (Rainbow(id)) keep += (keep.empty() ? "" : ",") + std::string(id);
-        cfg.fx.rainbow = keep;
-        g.paint_touched = false;
-        ch = true;
-    }
-    if (ch) Changed();
-}
-
-void SettingsTab() {
-    Config& cfg = g.base;
-    bool ch = false;
-    ch |= ImGui::SliderFloat("Menu size", &cfg.ui.scale, 0.75f, 2.0f, "%.2f");
-    if (ImGui::Checkbox("Debug log", &cfg.ui.debug_logging)) { Logger::Instance().SetDebug(cfg.ui.debug_logging); ch = true; }
-    if (ch) g.dirty = true;
-    ImGui::Separator();
-    if (ImGui::Button(g.dirty ? "Save settings *" : "Save settings")) {
-        std::string err;
-        if (SaveConfig(DefaultConfigPath(), g.base, &err)) { g.save_msg = "saved"; g.dirty = false; }
-        else g.save_msg = "save FAILED: " + err;
-        Logger::Instance().Info("config " + g.save_msg);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Reload from file")) { g.ctl->Shutdown(); g.loaded = false; EnsureLoaded(); g.dirty = false; }
-    if (!g.save_msg.empty()) ImGui::TextUnformatted(g.save_msg.c_str());
-    ImGui::TextDisabled("%s", DefaultConfigPath().string().c_str());
-    ImGui::SeparatorText("Credits");
-    ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.15f, 1), "ASTRO CTR " ASTRO_VERSION " by ABU 3RB");
-    ImGui::TextUnformatted("TikTok: _tmo   |   Instagram: 7.u8   |   Discord: 7_ug");
-}
+OverlayDiag g_diag;
 
 void DiagTab(const OverlayDiag& d) {
     ImGui::Text("Layer: loaded in sacredfire.exe (pid %lu)", GetCurrentProcessId());
@@ -406,28 +189,6 @@ void DiagTab(const OverlayDiag& d) {
 }
 
 }  // namespace
-
-void Menu_ApplyStyle() {
-    ImGui::StyleColorsDark();
-    ImGuiStyle& s = ImGui::GetStyle();
-    s.WindowRounding = 8;
-    s.FrameRounding = 5;
-    s.GrabRounding = 5;
-    s.WindowPadding = ImVec2(14, 12);
-    ImVec4* c = s.Colors;
-    const ImVec4 accent(0.95f, 0.45f, 0.10f, 1.0f);   // ASTRO orange
-    c[ImGuiCol_WindowBg] = ImVec4(0.07f, 0.07f, 0.09f, 0.94f);
-    c[ImGuiCol_TitleBgActive] = ImVec4(0.55f, 0.22f, 0.04f, 1.0f);
-    c[ImGuiCol_Tab] = ImVec4(0.20f, 0.12f, 0.08f, 1.0f);
-    c[ImGuiCol_TabSelected] = ImVec4(0.75f, 0.32f, 0.06f, 1.0f);
-    c[ImGuiCol_TabHovered] = accent;
-    c[ImGuiCol_CheckMark] = accent;
-    c[ImGuiCol_SliderGrab] = accent;
-    c[ImGuiCol_Button] = ImVec4(0.30f, 0.16f, 0.07f, 1.0f);
-    c[ImGuiCol_ButtonHovered] = ImVec4(0.65f, 0.28f, 0.06f, 1.0f);
-    c[ImGuiCol_FrameBg] = ImVec4(0.16f, 0.14f, 0.14f, 1.0f);
-    c[ImGuiCol_Header] = ImVec4(0.45f, 0.20f, 0.06f, 1.0f);
-}
 
 // Rainbow colours move on their own thread (see EnsureLoaded); nothing to do per frame.
 void Menu_Tick() {}
@@ -446,24 +207,19 @@ void Menu_DrawToast() {
 }
 
 void Menu_Draw(bool* open, const OverlayDiag& diag) {
-    std::lock_guard<std::recursive_mutex> l(g_mu);
-    EnsureLoaded();
-    ImGui::GetStyle().FontScaleMain = g.base.ui.scale;
-    ImGui::SetNextWindowSize(ImVec2(520, 520), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowPos(ImVec2(60, 60), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("ASTRO CTR " ASTRO_VERSION "   (F8)###astro", open)) {
-        if (ImGui::BeginTabBar("tabs")) {
-            if (ImGui::BeginTabItem("Nitro Color Studio")) { NitroTab(); ImGui::EndTabItem(); }
-            if (ImGui::BeginTabItem("Vehicle Studio")) { VehicleTab(); ImGui::EndTabItem(); }
-            if (ImGui::BeginTabItem("Settings")) { SettingsTab(); ImGui::EndTabItem(); }
-            if (ImGui::BeginTabItem("Diagnostics")) { DiagTab(diag); ImGui::EndTabItem(); }
-            ImGui::EndTabBar();
-        }
-    }
-    ImGui::End();
+    { std::lock_guard<std::recursive_mutex> l(g_mu); EnsureLoaded(); g_diag = diag; }
+    AstroUi_Draw(open);   // every page of the ASTRO app (app/main.cpp, built into the layer)
 }
 
+void Menu_DiagPage() { DiagTab(g_diag); }
+
 void Menu_Shutdown() {
+    FxEditor_Stop();
+    WheelEditor_Stop();
+    ModEngine_Stop();
+    MapColors_Stop();
+    MeshColors_Stop();
+    ZoneLight_Stop();
     g_rainbow_stop = true;
     if (g_rainbow.joinable()) g_rainbow.join();
     std::lock_guard<std::recursive_mutex> l(g_mu);
