@@ -32,7 +32,6 @@
 #include "wheel_editor.h"
 #include "nitro_backend.h"
 #include "switches.h"
-#include "players_esp.h"
 
 namespace astro {
 

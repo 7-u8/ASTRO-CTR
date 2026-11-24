@@ -52,7 +52,7 @@
 #include "core/tex_recolor.h"
 #include "core/paint_patterns.h"
 #ifdef ASTRO_IN_GAME
-namespace astro { void PlayersEsp_Tab(); void Menu_DiagPage(); }   // pages of the layer itself
+namespace astro { void Menu_DiagPage(); }   // the page of the layer itself
 #else
 #include "resource.h"
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
@@ -608,7 +608,7 @@ bool Slider(const char* label, float* v, float lo, float hi, const char* fmt, Im
 }
 
 // ---------------- pages ----------------
-enum class Page { Home, Game, Players, Nitro, Paint, Glow, Wheel, Mods, Maps, Effects, Items, Misc, Presets, Inject, Settings, Diag, About };
+enum class Page { Home, Game, Nitro, Paint, Glow, Wheel, Mods, Maps, Effects, Items, Misc, Presets, Inject, Settings, Diag, About };
 Page g_page = Page::Home;
 bool g_main = false;                 // false = the "OPEN CRASHNF" screen
 int g_pattern_all = 1, g_pattern[kPaintSlots] = {1, 1, 1};
@@ -4015,7 +4015,6 @@ void MainScreen(ImVec2 size) {
     NavItem("Home", Page::Home);
 #ifdef ASTRO_IN_GAME
     NavItem("GAME", Page::Game);
-    NavItem("PLAYERS", Page::Players);
     NavItem("Nitro flame", Page::Nitro);
     NavItem("Kart paint", Page::Paint);
     NavItem("Underglow", Page::Glow);
@@ -4065,7 +4064,6 @@ void MainScreen(ImVec2 size) {
     case Page::Inject: InjectPage(); break;
     case Page::About: AboutPage(); break;
 #ifdef ASTRO_IN_GAME
-    case Page::Players: PageTitle("PLAYERS", "Every kart marked on the screen with its live data."); PlayersEsp_Tab(); break;
     case Page::Diag: PageTitle("Diagnostics", "The layer inside the game."); Menu_DiagPage(); break;
 #else
     default: break;

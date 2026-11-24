@@ -2,7 +2,7 @@
 
 **Live customisation for Crash Team Racing Nitro-Fueled (the PS4 build running in the SacredFire / shadPS4-based PC host).**
 Everything is in one in-game menu (**F8**) with instant results, in the spirit of BakkesMod for Rocket League:
-colours, kart paint, wheels, maps, items, effects, race tools and a live view of every kart.
+colours, kart paint, wheels, maps, items, effects and race tools.
 
 **By ابو عرب | ABU 3RB** · TikTok [@_tmo](https://www.tiktok.com/@_tmo) · Instagram [@7.u8](https://www.instagram.com/7.u8) · Discord `7_ug`
 
@@ -16,7 +16,6 @@ colours, kart paint, wheels, maps, items, effects, race tools and a live view of
 |---|---|
 | Home | everything ASTRO changes at a glance, with on/off switches |
 | GAME | the race being driven: track, laps, lap times (offline races) |
-| PLAYERS | every kart marked on the screen with its live data: speed, boost (speed, time left), air time, ground angle, surface, wall contact, wetness. Read only; in online races only your own kart is shown |
 | Nitro flame | 3 flame colours, smoke, brightness (normal and blue boost) |
 | Kart paint | 3 slots × (tint + 6-colour ramp), whole kart / whole slot pickers, colour layouts |
 | Underglow | the neon light under the Champion kart |
@@ -85,7 +84,7 @@ game) and `ptrscan` (a pointer scanner).
 
 | Path | Contents |
 |---|---|
-| `src/layer/` | the Vulkan layer: overlay, menu, game-memory features (nitro, paint, wheels, maps, items, effects, PLAYERS, optimize) |
+| `src/layer/` | the Vulkan layer: overlay, menu, game-memory features (nitro, paint, wheels, maps, items, effects, optimize) |
 | `src/config/`, `src/core/`, `src/common/`, `src/diagnostics/`, `src/game/` | config (JSON), protocols between the app pages and the layer, colours, texture recolouring, log |
 | `app/` | the ASTRO app pages (window version, and the F8 menu) |
 | `launcher_v2/` | ASTRO CTR V2, the terminal launcher (`astro_art.txt` is its art) |
@@ -122,7 +121,6 @@ MIT, see [LICENSE](LICENSE). Dear ImGui is MIT licensed (`third_party/imgui/LICE
 
 **المميزات (كلها في F8):**
 * **GAME:** الحلبة واللفات وأوقات اللفات.
-* **PLAYERS:** كل سيارة عليها مربع وفوقها بياناتها: السرعة، البوست والوقت المتبقي منه، وقت الطيران، زاوية الأرض، نوع السطح، الجدار، الرطوبة. قراءة فقط، وفي الأونلاين تظهر سيارتك وحدها.
 * **النيترو، لون السيارة، إضاءة Champion، محرر العجلات.**
 * **MAPS:** الماء والسماء والثلج والحمم والضباب والشمس والإضاءة.
 * **ITEMS و Effects:** ألوان الأغراض وكل مؤثرات اللعبة.
